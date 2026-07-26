@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<!--
+  ============================================================
+  КОНВЕРТЕР ВАЛЮТ v2 — курсы Центробанка Узбекистана (cbu.uz)
+  ============================================================
+  Отличие от первой версии (converter.html):
+  здесь мы берём ОФИЦИАЛЬНЫЕ курсы сума с сайта ЦБ Узбекистана.
+
+  Главная учебная идея этого файла — данные из разных API
+  приходят в РАЗНОМ формате, и код приходится подстраивать.
+  - В прошлый раз API отдавал объект { "USD": 1, "UZS": 12650, ... }
+  - Здесь API отдаёт СПИСОК: [ {Ccy:"USD", Rate:"12634.28"}, ... ]
+  Поэтому разбор ответа выглядит иначе — смотри Шаг 6.
+
+  Открывается так же: двойной клик по файлу.
+  ============================================================
+-->
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Конвертер валют · ЦБ РУз</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: linear-gradient(160deg, #065f46, #0f172a);
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      padding: 16px; color: #0f172a;
+    }
+    .card {
+      background: #fff; width: 100%; max-width: 420px; border-radius: 20px;
+      padding: 28px 24px; box-shadow: 0 20px 50px rgba(0,0,0,.35);
+    }
+    h1 { font-size: 22px; margin-bottom: 4px; }
+    .subtitle { color: #64748b; font-size: 13px; margin-bottom: 22px; }
+    label { display: block; font-size: 13px; color: #475569; margin-bottom: 6px; }
+    input[type="number"] {
+      width: 100%; font-size: 22px; padding: 14px; border: 2px solid #e2e8f0;
+      border-radius: 12px; outline: none; margin-bottom: 18px;
+    }
+    input[type="number"]:focus { border-color: #059669; }
+    .row { display: flex; align-items: flex-end; gap: 10px; margin-bottom: 22px; }
+    .field { flex: 1; }
+    select {
+      width: 100%; font-size: 16px; padding: 13px 10px; border: 2px solid #e2e8f0;
+      border-radius: 12px; background: #f8fafc; outline: none;
+    }
+    select:focus { border-color: #059669; }
+    .swap {
+      flex: 0 0 auto; width: 46px; height: 46px; border: none; border-radius: 12px;
+      background: #059669; color: #fff; font-size: 18px; cursor: pointer; transition: transform .2s;
+    }
+    .swap:hover { transform: rotate(180deg); }
+    .result { background: #ecfdf5; border-radius: 14px; padding: 18px; text-align: center; }
+    .result .big { font-size: 26px; font-weight: 700; color: #065f46; }
+    .result .small { font-size: 13px; color: #64748b; margin-top: 6px; }
+    .status { font-size: 12px; color: #94a3b8; margin-top: 16px; text-align: center; }
+    .status.error { color: #dc2626; }
+  </style>
+</head>
+
+<body>
+  <div class="card">
+    <h1>🇺🇿 Конвертер валют</h1>
+    <p class="subtitle">Официальные курсы Центробанка Узбекистана.</p>
+
+    <label for="amount">Сумма</label>
+    <input type="number" id="amount" value="100" min="0">
+
+    <div class="row">
+      <div class="field">
+        <label for="from">Из</label>
+        <select id="from"></select>
+      </div>
+      <button class="swap" id="swap" title="Поменять местами">⇄</button>
+      <div class="field">
+        <label for="to">В</label>
+        <select id="to"></select>
+      </div>
+    </div>
+
+    <div class="result">
+      <div class="big" id="output">—</div>
+      <div class="small" id="rateInfo"></div>
+    </div>
+
+    <div class="status" id="status">Загружаю курсы ЦБ…</div>
+  </div>
+
+  <script>
+    // ---------- 1. Данные ----------
+    // Названия валют для показа в списках.
+    const CURRENCIES = {
+      UZS: "🇺🇿 Сум (UZS)",
+      USD: "🇺🇸 Доллар (USD)",
+      EUR: "🇪🇺 Евро (EUR)",
+      RUB: "🇷🇺 Рубль (RUB)",
+      KZT: "🇰🇿 Тенге (KZT)",
+      GBP: "🇬🇧 Фунт (GBP)",
+      CNY: "🇨🇳 Юань (CNY)",
+      JPY: "🇯🇵 Иена (JPY)"
+    };
+
+    // ВАЖНОЕ ОТЛИЧИЕ ОТ v1.
+    // Здесь база — СУМ. В rate храним "сколько сумов стоит 1 единица валюты".
+    // Для самого сума это, естественно, 1.
+    // Это запасные значения на случай отсутствия интернета.
+    let uzsPerUnit = {
+      UZS: 1, USD: 12634, EUR: 13700, RUB: 160, KZT: 27, GBP: 16000, CNY: 1750, JPY: 82
+    };
+
+    // ---------- 2. Элементы страницы ----------
+    const amountEl = document.getElementById("amount");
+    const fromEl   = document.getElementById("from");
+    const toEl     = document.getElementById("to");
+    const outputEl = document.getElementById("output");
+    const rateInfoEl = document.getElementById("rateInfo");
+    const statusEl = document.getElementById("status");
+    const swapBtn  = document.getElementById("swap");
+
+    // ---------- 3. Заполняем списки ----------
+    for (const code in CURRENCIES) {
+      fromEl.add(new Option(CURRENCIES[code], code));
+      toEl.add(new Option(CURRENCIES[code], code));
+    }
+    fromEl.value = "USD";
+    toEl.value   = "UZS";
+
+    // ---------- 4. Конвертация ----------
+    // База — сум, поэтому "мостик" теперь через сум, а не через доллар:
+    //   сумма -> в сумы -> в целевую валюту.
+    function convert() {
+      const amount = parseFloat(amountEl.value) || 0;
+      const from = fromEl.value;
+      const to   = toEl.value;
+
+      const inUzs  = amount * uzsPerUnit[from]; // переводим в сумы
+      const result = inUzs / uzsPerUnit[to];    // сумы -> целевую валюту
+
+      outputEl.textContent =
+        result.toLocaleString("ru-RU", { maximumFractionDigits: 2 }) + " " + to;
+
+      const one = (uzsPerUnit[from] / uzsPerUnit[to]).toLocaleString("ru-RU", { maximumFractionDigits: 4 });
+      rateInfoEl.textContent = `1 ${from} = ${one} ${to}`;
+    }
+
+    // ---------- 5. События ----------
+    amountEl.addEventListener("input", convert);
+    fromEl.addEventListener("change", convert);
+    toEl.addEventListener("change", convert);
+    swapBtn.addEventListener("click", () => {
+      const t = fromEl.value; fromEl.value = toEl.value; toEl.value = t; convert();
+    });
+
+    // ---------- 6. Курсы с ЦБ Узбекистана ----------
+    // API отдаёт СПИСОК объектов. Каждый объект — одна валюта, например:
+    //   { Ccy: "USD", Rate: "12634.28", Nominal: "1", Date: "25.07.2026", ... }
+    // Rate — сколько сумов стоит Nominal единиц этой валюты.
+    async function loadRates() {
+      try {
+        const response = await fetch("https://cbu.uz/ru/arkhiv-kursov-valyut/json/");
+        const list = await response.json(); // это МАССИВ, а не объект
+
+        // Проходим по массиву и берём только нужные нам валюты.
+        for (const item of list) {
+          if (CURRENCIES[item.Ccy]) {
+            // делим Rate на Nominal — на случай, если курс указан за 10 или 100 единиц
+            uzsPerUnit[item.Ccy] = parseFloat(item.Rate) / parseFloat(item.Nominal || 1);
+          }
+        }
+
+        const date = list[0] && list[0].Date ? list[0].Date : "сегодня";
+        statusEl.textContent = "Курсы ЦБ РУз на " + date + " · источник: cbu.uz";
+        statusEl.classList.remove("error");
+      } catch (err) {
+        // Если ЦБ недоступен (или браузер заблокировал запрос) — запасные курсы.
+        statusEl.textContent = "⚠️ Не удалось загрузить курсы ЦБ. Показаны примерные значения.";
+        statusEl.classList.add("error");
+      }
+      convert();
+    }
+
+    // ---------- 7. Запуск ----------
+    convert();
+    loadRates();
+  </script>
+</body>
+</html>

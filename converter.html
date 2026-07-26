@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<!--
+  ============================================================
+  КОНВЕРТЕР ВАЛЮТ — учебный прототип
+  ============================================================
+  Это ОДИН файл, в котором есть всё: структура (HTML),
+  внешний вид (CSS) и логика (JavaScript).
+  Чтобы открыть: просто дважды кликни по файлу — он откроется
+  в браузере (Chrome, Safari и т.д.), в том числе на телефоне.
+
+  Файл разбит на 3 части, ищи большие комментарии:
+    ЧАСТЬ 1 — HTML: что видит пользователь (внизу, в <body>)
+    ЧАСТЬ 2 — CSS: как это выглядит (в <style>)
+    ЧАСТЬ 3 — JavaScript: что происходит при нажатии (в <script>)
+  ============================================================
+-->
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <!-- эта строка делает страницу удобной на телефоне (масштаб под экран) -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Конвертер валют</title>
+
+  <!--
+    ЧАСТЬ 2 — CSS (стили).
+    Здесь описано, КАК выглядят элементы: цвета, отступы, шрифты.
+    Логику это не меняет — только внешний вид.
+  -->
+  <style>
+    /* * — значит "применить ко всем элементам". Убираем стандартные отступы. */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    /*
+      ПЕРЕМЕННЫЕ. Все цвета и радиусы собраны в одном месте.
+      Меняешь строку здесь — меняется вся страница сразу.
+      Дальше в коде вместо цвета пишем var(--имя).
+    */
+    :root {
+      --bg:        #09090f;                 /* фон страницы */
+      --card:      rgba(255,255,255,.055);  /* полупрозрачное "стекло" карточки */
+      --fill:      rgba(255,255,255,.04);   /* фон полей ввода */
+      --stroke:    rgba(255,255,255,.10);   /* тонкие границы */
+      --stroke-hi: rgba(255,255,255,.22);   /* границы поярче — при наведении */
+      --text:      #f2f2f7;                 /* основной текст */
+      --muted:     #8f8fa8;                 /* второстепенный текст */
+      --accent:    #7c5cff;                 /* акцент — фиолетовый */
+      --accent-2:  #21d4fd;                 /* второй акцент — голубой */
+      --ok:        #34d399;                 /* "всё хорошо" */
+      --danger:    #ff6b81;                 /* ошибка */
+      --r-card: 32px;                       /* радиус карточки */
+      --r-field: 18px;                      /* радиус полей */
+    }
+
+    body {
+      /* Системный шрифт: выглядит "родным" на каждой ОС и грузится мгновенно */
+      font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      min-height: 100dvh;   /* dvh правильно учитывает адресную строку на телефоне */
+      display: grid;
+      place-items: center;  /* центрируем карточку и по горизонтали, и по вертикали */
+      padding: 20px;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /*
+      Цветные размытые пятна на фоне ("mesh gradient") — приём из современных сайтов.
+      Это не картинка: три радиальных градиента на невидимом слое позади контента.
+    */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: -20%;      /* растягиваем с запасом за края, чтобы размытие не обрезалось */
+      z-index: -1;
+      background:
+        radial-gradient(38% 42% at 18% 12%, #4c1d95 0%, transparent 70%),
+        radial-gradient(34% 38% at 86% 22%, #0e7490 0%, transparent 70%),
+        radial-gradient(40% 46% at 62% 96%, #9d174d 0%, transparent 70%);
+      filter: blur(70px);
+      opacity: .8;
+    }
+
+    /*
+      Карточка-"стекло" (glassmorphism): полупрозрачный фон + размытие того,
+      что находится ЗА ней. Именно backdrop-filter даёт эффект матового стекла.
+    */
+    .card {
+      position: relative;
+      width: 100%;
+      max-width: 440px;
+      background: var(--card);
+      -webkit-backdrop-filter: blur(28px) saturate(160%);
+      backdrop-filter: blur(28px) saturate(160%);
+      border: 1px solid var(--stroke);
+      border-radius: var(--r-card);
+      /* iOS-скругление ("squircle"): углы плавнее, как у иконок на iPhone.
+         В старых браузерах строка просто игнорируется — остаётся обычное скругление. */
+      corner-shape: squircle;
+      padding: 26px 24px 22px;
+      box-shadow: 0 30px 70px -20px rgba(0,0,0,.75);
+      animation: rise .5s cubic-bezier(.22,1,.36,1) both;  /* плавное появление */
+    }
+
+    /* Светлый блик по верхней кромке — карточка кажется объёмной */
+    .card::before {
+      content: "";
+      position: absolute;
+      inset: 0 0 auto;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,.45), transparent);
+    }
+
+    /* @keyframes — описание анимации: откуда начинаем. Куда прийти — уже в .card */
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(14px) scale(.98); }
+    }
+
+    /* ——— Заголовок с иконкой ——— */
+    .head { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+
+    .logo {
+      flex: 0 0 auto;
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      font-size: 20px;
+      border-radius: 14px;
+      corner-shape: squircle;
+      background: linear-gradient(140deg, var(--accent), var(--accent-2));
+      box-shadow: 0 8px 22px -8px var(--accent);
+    }
+
+    h1 { font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+    .subtitle { color: var(--muted); font-size: 12.5px; margin-top: 3px; }
+
+    /* Подписи над полями: мелкие, заглавными, с разрядкой букв */
+    label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    /* ——— Поле ввода суммы ——— */
+    input[type="number"] {
+      width: 100%;
+      font: inherit;            /* берём шрифт от body, а не системный шрифт поля */
+      font-size: 34px;
+      font-weight: 600;
+      letter-spacing: -.02em;
+      /* tabular-nums — все цифры одной ширины, поэтому текст не "дёргается" при вводе */
+      font-variant-numeric: tabular-nums;
+      color: var(--text);
+      background: var(--fill);
+      border: 1px solid var(--stroke);
+      border-radius: var(--r-field);
+      corner-shape: squircle;
+      padding: 14px 18px;
+      margin-bottom: 18px;
+      outline: none;
+      transition: border-color .2s, box-shadow .2s, background .2s;
+      -moz-appearance: textfield;
+      appearance: textfield;
+    }
+    /* Убираем стрелочки-"крутилки" справа в числовом поле */
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+    /* Общее состояние фокуса: подсветка рамки + мягкое кольцо вокруг */
+    input:focus, select:focus {
+      border-color: rgba(124,92,255,.65);
+      box-shadow: 0 0 0 4px rgba(124,92,255,.20);
+      background: rgba(255,255,255,.07);
+    }
+
+    /* ——— Два списка валют, между ними кнопка обмена ——— */
+    .row {
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+      margin-bottom: 22px;
+    }
+    .field { flex: 1; min-width: 0; }  /* min-width:0 не даёт полям вылезти за карточку */
+
+    select {
+      width: 100%;
+      font: inherit;
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text);
+      background-color: var(--fill);
+      border: 1px solid var(--stroke);
+      border-radius: var(--r-field);
+      corner-shape: squircle;
+      padding: 13px 34px 13px 14px;   /* справа больше места — там своя стрелка */
+      outline: none;
+      cursor: pointer;
+      /* appearance:none убирает системную стрелку, вместо неё рисуем свою:
+         это не файл, а SVG-картинка, записанная прямо в CSS (data-URI) */
+      -webkit-appearance: none;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none'%3E%3Cpath d='M1 1.6 6 6.4 11 1.6' stroke='%23a5a5c4' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 13px center;
+      transition: border-color .2s, box-shadow .2s, background-color .2s;
+    }
+    select:hover { border-color: var(--stroke-hi); }
+
+    /* Цвет пунктов в раскрытом списке (без этого на Windows они белые) */
+    option { background: #15151f; color: var(--text); }
+
+    /* Круглая кнопка "поменять валюты местами" */
+    .swap {
+      flex: 0 0 auto;
+      width: 46px;
+      height: 46px;
+      display: grid;
+      place-items: center;
+      border: none;
+      border-radius: 50%;
+      background: linear-gradient(140deg, var(--accent), var(--accent-2));
+      color: #fff;
+      font-size: 17px;
+      cursor: pointer;
+      box-shadow: 0 10px 24px -8px var(--accent);
+      transition: transform .35s cubic-bezier(.22,1,.36,1);
+    }
+    .swap:hover  { transform: rotate(180deg) scale(1.07); }
+    .swap:active { transform: rotate(180deg) scale(.93); }
+
+    /* ——— Блок с результатом — главный акцент экрана ——— */
+    .result {
+      border: 1px solid var(--stroke);
+      border-radius: 24px;
+      corner-shape: squircle;
+      background: linear-gradient(150deg, rgba(124,92,255,.24), rgba(33,212,253,.12));
+      padding: 20px 18px;
+      text-align: center;
+    }
+    .result .cap {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+    .result .big {
+      font-size: 30px;
+      font-weight: 700;
+      letter-spacing: -.025em;
+      line-height: 1.2;
+      font-variant-numeric: tabular-nums;
+      /* Градиентный текст: заливаем буквы градиентом вместо обычного цвета.
+         background-clip: text обрезает фон по форме текста. */
+      background: linear-gradient(100deg, #ffffff, #c9c3ff);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .result .small { font-size: 12.5px; color: var(--muted); margin-top: 8px; }
+
+    /* ——— Строка статуса внизу (откуда курсы, ошибки) ——— */
+    .status {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      font-size: 11.5px;
+      color: var(--muted);
+      margin-top: 16px;
+      text-align: center;
+    }
+    /* Кружок-индикатор рисуем через ::before — так HTML и JavaScript менять не нужно */
+    .status::before {
+      content: "";
+      flex: 0 0 auto;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--ok);
+      box-shadow: 0 0 0 3px rgba(52,211,153,.18);
+    }
+    .status.error { color: var(--danger); }
+    .status.error::before {
+      background: var(--danger);
+      box-shadow: 0 0 0 3px rgba(255,107,129,.18);
+    }
+
+    /* На очень узких экранах уменьшаем самые крупные надписи */
+    @media (max-width: 380px) {
+      input[type="number"] { font-size: 28px; }
+      .result .big { font-size: 25px; }
+    }
+
+    /* Уважаем системную настройку "уменьшить анимацию" */
+    @media (prefers-reduced-motion: reduce) {
+      * { animation: none !important; transition: none !important; }
+    }
+  </style>
+</head>
+
+<body>
+  <!--
+    ЧАСТЬ 1 — HTML (структура).
+    Здесь описано, ЧТО есть на экране. Каждый элемент с id="..."
+    мы позже находим из JavaScript, чтобы читать или менять его.
+  -->
+  <div class="card">
+    <!-- Заголовок: иконка в цветном квадрате + название и пояснение -->
+    <div class="head">
+      <div class="logo">💱</div>
+      <div>
+        <h1>Конвертер валют</h1>
+        <p class="subtitle">Курсы обновляются автоматически</p>
+      </div>
+    </div>
+
+    <!-- Поле, куда пользователь вводит сумму -->
+    <label for="amount">Сумма</label>
+    <input type="number" id="amount" value="100" min="0">
+
+    <!-- Два списка валют и кнопка обмена между ними -->
+    <div class="row">
+      <div class="field">
+        <label for="from">Из</label>
+        <select id="from"></select> <!-- список заполнится из JavaScript -->
+      </div>
+
+      <button class="swap" id="swap" title="Поменять местами">⇄</button>
+
+      <div class="field">
+        <label for="to">В</label>
+        <select id="to"></select>
+      </div>
+    </div>
+
+    <!-- Сюда выводится результат -->
+    <div class="result">
+      <div class="cap">Итого</div>
+      <div class="big" id="output">—</div>
+      <div class="small" id="rateInfo"></div>
+    </div>
+
+    <div class="status" id="status">Загружаю курсы…</div>
+  </div>
+
+  <!--
+    ЧАСТЬ 3 — JavaScript (логика).
+    Здесь описано, ЧТО ПРОИСХОДИТ: как получить курсы из интернета,
+    как посчитать результат и как обновлять экран.
+  -->
+  <script>
+    // ---------- 1. Настройки ----------
+    // Список валют, которые покажем в выпадающих списках.
+    // Ключ — код валюты (как в API), значение — что показать человеку.
+    const CURRENCIES = {
+      UZS: "🇺🇿 Сум (UZS)",
+      USD: "🇺🇸 Доллар (USD)",
+      EUR: "🇪🇺 Евро (EUR)",
+      RUB: "🇷🇺 Рубль (RUB)",
+      KZT: "🇰🇿 Тенге (KZT)",
+      GBP: "🇬🇧 Фунт (GBP)",
+      TRY: "🇹🇷 Лира (TRY)",
+      CNY: "🇨🇳 Юань (CNY)",
+      JPY: "🇯🇵 Иена (JPY)",
+      INR: "🇮🇳 Рупия (INR)",
+    };
+
+    // "Запасные" курсы относительно доллара (1 USD = столько-то).
+    // Нужны, если нет интернета — тогда приложение всё равно работает.
+    // Реальные курсы позже перезапишут эти значения.
+    let rates = {
+      USD: 1, UZS: 12650, EUR: 0.92, RUB: 79, KZT: 470,
+      GBP: 0.79, TRY: 34, CNY: 7.1, JPY: 157, INR: 83
+    };
+
+    // ---------- 2. Находим элементы страницы ----------
+    // document.getElementById("...") — берём элемент по его id из HTML.
+    const amountEl = document.getElementById("amount");
+    const fromEl   = document.getElementById("from");
+    const toEl     = document.getElementById("to");
+    const outputEl = document.getElementById("output");
+    const rateInfoEl = document.getElementById("rateInfo");
+    const statusEl = document.getElementById("status");
+    const swapBtn  = document.getElementById("swap");
+
+    // ---------- 3. Заполняем выпадающие списки валютами ----------
+    // Проходим по всем валютам и добавляем <option> в оба списка.
+    for (const code in CURRENCIES) {
+      fromEl.add(new Option(CURRENCIES[code], code));
+      toEl.add(new Option(CURRENCIES[code], code));
+    }
+    fromEl.value = "USD";  // по умолчанию из доллара
+    toEl.value   = "UZS";  // в сум
+
+    // ---------- 4. Главная функция: посчитать и показать результат ----------
+    function convert() {
+      const amount = parseFloat(amountEl.value) || 0; // текст из поля -> число
+      const from = fromEl.value;
+      const to   = toEl.value;
+
+      // Все курсы у нас заданы относительно доллара.
+      // Чтобы перевести из одной валюты в другую:
+      //   сначала переводим сумму в доллары, потом доллары в нужную валюту.
+      const inUsd  = amount / rates[from];
+      const result = inUsd * rates[to];
+
+      // toLocaleString красиво добавляет разделители: 1 234 567
+      outputEl.textContent =
+        result.toLocaleString("ru-RU", { maximumFractionDigits: 2 }) + " " + to;
+
+      // Показываем, сколько стоит 1 единица (справочно)
+      const one = (rates[to] / rates[from]).toLocaleString("ru-RU", { maximumFractionDigits: 4 });
+      rateInfoEl.textContent = `1 ${from} = ${one} ${to}`;
+    }
+
+    // ---------- 5. Реагируем на действия пользователя ----------
+    // addEventListener — "слушай событие и вызывай функцию".
+    // "input" — срабатывает при каждом изменении; "change" — при выборе в списке.
+    amountEl.addEventListener("input", convert);
+    fromEl.addEventListener("change", convert);
+    toEl.addEventListener("change", convert);
+
+    // Кнопка обмена: меняем валюты местами
+    swapBtn.addEventListener("click", () => {
+      const t = fromEl.value;
+      fromEl.value = toEl.value;
+      toEl.value = t;
+      convert();
+    });
+
+    // ---------- 6. Получаем реальные курсы из интернета (API) ----------
+    // fetch(...) отправляет запрос по адресу и ждёт ответ.
+    // Используем бесплатный API без ключа. Курсы даны относительно USD.
+    async function loadRates() {
+      try {
+        const response = await fetch("https://open.er-api.com/v6/latest/USD");
+        const data = await response.json(); // превращаем ответ в объект
+
+        if (data.result !== "success") throw new Error("API вернул ошибку");
+
+        // Берём из ответа только нужные нам валюты и обновляем rates
+        for (const code in CURRENCIES) {
+          if (data.rates[code] !== undefined) {
+            rates[code] = data.rates[code];
+          }
+        }
+
+        // Показываем дату обновления курсов
+        const date = data.time_last_update_utc
+          ? new Date(data.time_last_update_utc).toLocaleDateString("ru-RU")
+          : "сегодня";
+        statusEl.textContent = "Курсы актуальны на " + date + " · источник: open.er-api.com";
+        statusEl.classList.remove("error");
+      } catch (err) {
+        // Если интернета нет или API недоступен — работаем на запасных курсах
+        statusEl.textContent = "⚠️ Нет связи с сервером. Показаны примерные курсы.";
+        statusEl.classList.add("error");
+      }
+      convert(); // пересчитываем с новыми (или запасными) курсами
+    }
+
+    // ---------- 7. Запускаем всё при открытии страницы ----------
+    convert();     // сразу показать результат на запасных курсах
+    loadRates();   // и параллельно подтянуть свежие курсы
+  </script>
+</body>
+</html>

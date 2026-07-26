@@ -1,0 +1,14 @@
+{
+  "name": "Конвертер валют · ЦБ РУз",
+  "short_name": "Валюты",
+  "description": "Конвертер валют по официальным курсам ЦБ Узбекистана",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#065f46",
+  "lang": "ru",
+  "icons": [
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
